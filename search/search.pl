@@ -1,49 +1,39 @@
+% Helper predicates
 
-:- dynamic visited/2.
+% Check if a door is passable
+passable(CurrentRoom, NextRoom, _) :-
+    door(CurrentRoom, NextRoom);
+    door(NextRoom, CurrentRoom).
 
+passable(CurrentRoom, NextRoom, Keys) :-
+    (locked_door(CurrentRoom, NextRoom, LockColor);
+     locked_door(NextRoom, CurrentRoom, LockColor)),
+    member(LockColor, Keys). % Check if the key for the lock is available.
 
-clear_visited :- retractall(visited(_, _)).
+% Add key to the key list if present in the room
+pickup_keys(CurrentRoom, Keys, UpdatedKeys) :-
+    (key(CurrentRoom, KeyColor), \+ member(KeyColor, Keys) ->
+        UpdatedKeys = [KeyColor | Keys]; % Add the key if not already picked.
+        UpdatedKeys = Keys).
 
+bfs([[Path, CurrentRoom, _] | _], Path) :-
+    treasure(CurrentRoom). % Found the treasure.
 
-search(Actions) :-
-    clear_visited,
-    initial(Start),
-    bfs([(Start, [], [])], [], Actions).
-
-
-bfs([(Position, Keys, Path)|_], _, Actions) :-
-    treasure(Position), !, % Found the treasure
-    reverse(Path, Actions).
-bfs([State|Queue], _, Actions) :-
-    State = (Position, Keys, Path),
+bfs([[Path, CurrentRoom, Keys] | RestQueue], Solution) :-
     findall(
-        NextState,
-        (   next_position(Position, Next, Keys, NewKeys),
-            valid_state(Next, NewKeys),
-            NextState = (Next, NewKeys, [move(Position, Next)|Path])
+        [NewPath, NextRoom, UpdatedKeys],
+        (
+            passable(CurrentRoom, NextRoom, Keys),       % Check if the door is passable.
+            \+ member(move(CurrentRoom, NextRoom), Path), % Avoid revisiting the same move.
+            pickup_keys(NextRoom, Keys, UpdatedKeys),     % Pick up keys in the next room if available.
+            append(Path, [move(CurrentRoom, NextRoom)], NewPath) % Add the move to the path.
         ),
-        NewStates
+        NewPaths
     ),
-    append(Queue, NewStates, UpdatedQueue),
-    bfs(UpdatedQueue, _, Actions).
+    append(RestQueue, NewPaths, NewQueue), % Add new paths to the queue for exploration.
+    bfs(NewQueue, Solution). % Continue searching.
 
-
-valid_state(Position, Keys) :-
-    \+ visited(Position, Keys), % Not visited with the same set of keys
-    assertz(visited(Position, Keys)).
-
-
-next_position(Pos, Next, Keys, NewKeys) :-
-    (door(Pos, Next); door(Next, Pos)), % Unlocked door
-    NewKeys = Keys.
-next_position(Pos, Next, Keys, Keys) :- % Door locked, but we have the key
-    (locked_door(Pos, Next, Color); locked_door(Next, Pos, Color)),
-    member(Color, Keys).
-next_position(Pos, Next, Keys, [Color|Keys]) :- % Picking up a new key
-    door(Pos, Next),
-    key(Next, Color),
-    \+ member(Color, Keys).
-
-
-
-
+% Entry point for the search
+search(Actions) :-
+    initial(StartRoom), % Start from the initial room.
+    bfs([[[ ], StartRoom, []]], Actions). % Initialize BFS with an empty path and no keys.
